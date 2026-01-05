@@ -31,7 +31,7 @@ Engineers with backgrounds in:
 
 ## Location
 
-Menzingen, Switzerland 🇨🇭
+Switzerland 🇨🇭
 
 ---
 
