@@ -4,14 +4,14 @@
 
 We connect ERP, MES, and production systems—transforming factories from black box to glass box with AI agents.
 
-## What We Do
+## 🏭 What We Do
 
 - **Factory Digitalization** — Bridge shop floor data to ERP/MES systems
 - **Azure IoT & Data Platforms** — Cloud and on-premises data infrastructure
 - **AI Agents** — Intelligent automation for manufacturing workflows
 - **Custom Integrations** — OPC-UA, MQTT, REST APIs connecting industrial systems
 
-## Tech Stack
+## 🛠️ Tech Stack
 
 ```
 Cloud:        Azure IoT Hub, Databricks, Azure Functions
@@ -21,7 +21,7 @@ Frontend:     React, Next.js
 AI/ML:        LLMs, AI agents, data pipelines
 ```
 
-## Team
+## 👥 Team
 
 Engineers with backgrounds in:
 - Mechanical Engineering (ETH Zurich)
@@ -29,9 +29,9 @@ Engineers with backgrounds in:
 - Data engineering & process optimization
 - Manufacturing systems (MES, ERP, PLCs)
 
-## Location
+## 📍 Location
 
-Switzerland 🇨🇭
+Menzingen, Switzerland 🇨🇭
 
 ---
 
