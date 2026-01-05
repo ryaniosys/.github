@@ -1,0 +1,151 @@
+# iosys Organization Conventions
+# Machine-readable standards for AI agents (Copilot, Claude)
+version: 1
+
+# Repository Naming
+repository_naming:
+  client_projects:
+    pattern: "client-{clientname}-{project}"
+    examples: 
+      - client-acme-webshop
+      - client-bigcorp-dashboard
+    description: "All client/billable work"
+  internal_products:
+    pattern: "{product-name}"
+    examples:
+      - invoicing-saas
+      - team-handbook
+      - deploy-automation
+    description: "Internal tools, SaaS, docs - no prefix"
+
+# GitHub Topics for secondary categorization
+github_topics:
+  tech_stack:
+    - rails
+    - nextjs
+    - react-native
+    - python
+    - typescript
+    - azure
+    - databricks
+  status:
+    - active
+    - maintenance
+    - archived
+  type:
+    - api
+    - webapp
+    - mobile
+    - library
+    - docs
+
+# Label Schema (15 labels)
+labels:
+  priority:
+    - name: "priority: critical"
+      color: "b60205"
+      description: "Drop everything, fix now"
+    - name: "priority: high"
+      color: "d93f0b"
+      description: "This sprint"
+    - name: "priority: medium"
+      color: "fbca04"
+      description: "Next sprint"
+    - name: "priority: low"
+      color: "fef2c0"
+      description: "Backlog"
+  type:
+    - name: "type: bug"
+      color: "d73a4a"
+      description: "Something broken"
+    - name: "type: feature"
+      color: "0075ca"
+      description: "New capability"
+    - name: "type: process"
+      color: "a2eeef"
+      description: "Tech debt, refactoring, ops"
+    - name: "type: other"
+      color: "d4c5f9"
+      description: "Catchall - needs categorization"
+  size:
+    - name: "size: xs"
+      color: "0e8a16"
+      description: "< 1 hour"
+    - name: "size: s"
+      color: "1d7a1d"
+      description: "< 1 day"
+    - name: "size: m"
+      color: "2b6a2b"
+      description: "1-3 days"
+    - name: "size: l"
+      color: "3a5a3a"
+      description: "> 3 days (consider splitting)"
+  workflow:
+    - name: "ready"
+      color: "0e8a16"
+      description: "Refined + sized, ready to pull"
+    - name: "blocked"
+      color: "b60205"
+      description: "Waiting on external"
+    - name: "help-wanted"
+      color: "008672"
+      description: "Open for anyone"
+
+# Definition of Ready
+definition_of_ready:
+  - Has type label (bug/feature/process)
+  - Has size label (xs/s/m/l)
+  - Has priority label
+  - Requirements are clear
+
+# Branching Strategy
+branching:
+  strategy: trunk-based
+  main_branch: main
+  versioning: semver
+  deployment:
+    dev:
+      trigger: "push to main"
+      automatic: true
+    prod:
+      trigger: "git tag (v*)"
+      automatic: true
+  tag_pattern: "v{MAJOR}.{MINOR}.{PATCH}"
+  hotfix_process:
+    - Create hotfix branch from latest tag
+    - Fix and test
+    - Merge to main (deploys to dev)
+    - Create new patch tag (deploys to prod)
+
+# Issue Creation (for AI agents)
+issue_templates:
+  bug:
+    labels: ["type: bug"]
+    title_prefix: "[Bug]: "
+  feature:
+    labels: ["type: feature"]
+    title_prefix: "[Feature]: "
+  cli_example: |
+    gh issue create --repo OWNER/REPO \
+      --title "[Bug]: Brief description" \
+      --label "type: bug" \
+      --body "## Description\n..."
+
+# Tech Stack
+tech_stack:
+  cloud: Azure
+  languages:
+    - Python
+    - TypeScript
+    - C#
+  data:
+    - Databricks
+    - Time series
+    - OPC-UA
+    - MQTT
+  frontend:
+    - React
+    - Next.js
+  ai:
+    - LLMs
+    - AI agents
