@@ -2,7 +2,7 @@
 
 **Integrate. Streamline. Automate.**
 
-We connect ERP, MES, and production systems—transforming factories from black box to glass box with AI agents.
+We connect ERP, MES, and production systems - transforming factories from black box to glass box with AI agents.
 
 ## 🏭 What We Do
 
