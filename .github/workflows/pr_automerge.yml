@@ -31,7 +31,8 @@ jobs:
     permissions:
       contents: write        # to squash-merge
       pull-requests: write   # to label / merge
-      checks: read
+      checks: read           # check-runs on the head commit
+      statuses: read         # legacy commit statuses (CI that reports there, not as check-runs)
     steps:
       - name: Decide (fail-closed) and merge only if the review is clean
         env:
@@ -89,6 +90,15 @@ jobs:
                              or ((.conclusion // "") | IN("success","neutral","skipped") | not)) ]
                   | length')
           [ "$NOTGREEN" = "0" ] || decline "$NOTGREEN other check-run(s) not green/complete"
+
+          # Legacy commit statuses too (some CI reports here, not as check-runs). The combined
+          # endpoint returns state "pending" for a commit with zero statuses, so ignore the empty
+          # case and only block on a non-success state when statuses actually exist.
+          read -r STATUS_STATE STATUS_COUNT < <(gh api "repos/$REPO/commits/$HEAD_SHA/status" \
+            --jq '[.state, (.total_count|tostring)] | @tsv')
+          if [ "${STATUS_COUNT:-0}" != "0" ] && [ "$STATUS_STATE" != "success" ]; then
+            decline "commit status is '$STATUS_STATE' ($STATUS_COUNT status(es))"
+          fi
 
           say "PR #$PR is clean by the strict bar; squash-merging"
           gh pr merge "$PR" --repo "$REPO" --squash --delete-branch
