@@ -45,10 +45,16 @@ jobs:
           # Model + gateway config live here (not only in .pr_agent.toml) because the Action reads
           # the toml from the DEFAULT branch, so a pre-merge PR would otherwise run with defaults.
           # Env wins over both the org-global and the repo-local toml, keeping the model uniform.
-          CONFIG.MODEL: "openai/openrouter/openai/gpt-5.6-terra-pro"
-          CONFIG.FALLBACK_MODELS: '["openai/openrouter/google/gemini-3.1-pro-preview"]'
+          CONFIG.MODEL: "openai/openrouter/openai/gpt-5.6-luna-pro"
+          CONFIG.FALLBACK_MODELS: '["openai/openrouter/openai/gpt-5.6-terra"]'
           CONFIG.CUSTOM_MODEL_MAX_TOKENS: "1000000"
           OPENAI.API_BASE: "https://litellm.iosys.ch/v1"
+          # These OpenRouter reasoning models reject some params PR-Agent sends (temperature etc.),
+          # which raised UnsupportedParamsError on EVERY primary call and silently fell back to the
+          # expensive gemini-3.1-pro-preview (100 fallback calls = USD 10+ before this was caught).
+          # drop_params tells litellm to strip the unsupported param instead of erroring, so the
+          # cheap primary actually serves the review. Fallback is now a cheap same-family model too.
+          LITELLM.DROP_PARAMS: "true"
           # Which tools run, and on which PR events (incl. synchronize, so pushes re-review).
           GITHUB_ACTION_CONFIG.AUTO_DESCRIBE: "true"
           GITHUB_ACTION_CONFIG.AUTO_REVIEW: "true"
