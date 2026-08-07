@@ -1,0 +1,95 @@
+name: PR-Agent auto-merge (findings-aware, reusable)
+
+# Tier 1 of MGMT-642: findings-aware auto-merge for the cross-family PR-Agent gate.
+#
+# ADVISORY model (MGMT-643 decision b + c): the gate does NOT branch-protect main (that is
+# MGMT-650). So this workflow makes the "merge only if the review came back clean" decision
+# itself, fail-closed: anything ambiguous, missing, or unexpected leaves the PR OPEN.
+#
+# It is called by a ~10-line per-repo caller that listens to the review workflow's
+# `workflow_run: completed`. The caller exists ONLY in allowlisted repos, so the allowlist is
+# literally which repos opted in. A global kill-switch is the org variable PR_AUTOMERGE_ENABLED.
+#
+# STRICT bar (Chris, 2026-08-07): auto-merge only when the reviewer produced NOTHING actionable
+# - no key issues, no code suggestions (optional ones included), no security concern - AND the
+# author is trusted AND every other check on the head commit is green. Diagnostics go to stderr;
+# this job never posts to the PR except to add a `pr-agent:findings` label when it declines.
+
+on:
+  workflow_call: {}
+
+jobs:
+  automerge:
+    # Only for a successful review of a same-repo (non-fork) pull_request, and only when the
+    # global kill-switch is on. Fork PRs get no token and are never auto-merged.
+    if: >-
+      ${{ vars.PR_AUTOMERGE_ENABLED == 'true'
+      && github.event.workflow_run.event == 'pull_request'
+      && github.event.workflow_run.conclusion == 'success'
+      && github.event.workflow_run.head_repository.full_name == github.event.workflow_run.repository.full_name }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write        # to squash-merge
+      pull-requests: write   # to label / merge
+      checks: read
+    steps:
+      - name: Decide (fail-closed) and merge only if the review is clean
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.event.workflow_run.repository.full_name }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          # Trusted PR authors. Anything else never auto-merges (fail-closed).
+          TRUSTED_AUTHORS: "chmryan,chrisryan,chris.ryan,claude,cyrus,github-actions[bot],app/github-actions,app/cyrus"
+        run: |
+          set -euo pipefail
+          say() { echo "automerge: $*" >&2; }
+
+          PR=$(gh api "repos/$REPO/commits/$HEAD_SHA/pulls" --jq '.[0].number // empty')
+          if [ -z "$PR" ]; then say "no PR associated with $HEAD_SHA; nothing to do"; exit 0; fi
+          say "evaluating PR #$PR on $REPO (head $HEAD_SHA)"
+
+          read -r STATE AUTHOR DRAFT < <(gh pr view "$PR" --repo "$REPO" \
+            --json state,author,isDraft --jq '[.state, .author.login, (.isDraft|tostring)] | @tsv')
+          if [ "$STATE" != "OPEN" ];  then say "PR is $STATE, not OPEN; skip"; exit 0; fi
+          if [ "$DRAFT" != "false" ]; then say "PR is a draft; skip"; exit 0; fi
+
+          # Trusted author (fail-closed on unknown)
+          case ",$TRUSTED_AUTHORS," in
+            *",$AUTHOR,"*) say "author '$AUTHOR' trusted" ;;
+            *) say "author '$AUTHOR' not in allowlist; skip"; exit 0 ;;
+          esac
+
+          decline() {   # leave the PR open, tag it for tier 2, and stop (exit 0 = not an error)
+            say "NOT clean: $1 -> leaving PR #$PR open for review"
+            gh pr edit "$PR" --repo "$REPO" --add-label 'pr-agent:findings' >/dev/null 2>&1 || true
+            exit 0
+          }
+
+          # Security-concern label = never auto-merge
+          if gh pr view "$PR" --repo "$REPO" --json labels --jq '.labels[].name' \
+               | grep -qi 'possible security concern'; then
+            decline "security-concern label present"
+          fi
+
+          # The reviewer guide must POSITIVELY report no key issues, and the code-suggestions
+          # comment must POSITIVELY report none. A missing comment fails these greps -> decline.
+          GUIDE=$(gh api --paginate "repos/$REPO/issues/$PR/comments" \
+                    --jq '[.[] | select(.body | test("PR Reviewer Guide"))] | last | .body // ""')
+          SUGG=$(gh api --paginate "repos/$REPO/issues/$PR/comments" \
+                    --jq '[.[] | select(.body | test("PR Code Suggestions"))] | last | .body // ""')
+          grep -qF "No major issues detected" <<<"$GUIDE"  || decline "reviewer guide reports key issues (or is missing)"
+          grep -qF "No code suggestions found" <<<"$SUGG"  || decline "code suggestions present (or comment missing)"
+
+          # Every OTHER check-run on the head commit must be completed and green. Exclude this
+          # auto-merge run itself (it is in_progress on the same sha, so it would self-block).
+          NOTGREEN=$(gh api --paginate "repos/$REPO/commits/$HEAD_SHA/check-runs" \
+            --jq '[ .check_runs[]
+                    | select((.name | ascii_downcase | contains("automerge")) | not)
+                    | select((.status != "completed")
+                             or ((.conclusion // "") | IN("success","neutral","skipped") | not)) ]
+                  | length')
+          [ "$NOTGREEN" = "0" ] || decline "$NOTGREEN other check-run(s) not green/complete"
+
+          say "PR #$PR is clean by the strict bar; squash-merging"
+          gh pr merge "$PR" --repo "$REPO" --squash --delete-branch
+          say "merged PR #$PR"
