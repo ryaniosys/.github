@@ -1,0 +1,62 @@
+name: PR-Agent (cross-family review, reusable)
+
+# Reusable org-wide AI code review. Callers pass their PR events in; this workflow runs a model
+# from a DIFFERENT lab than the PR author (Claude), so it is a genuine independent check.
+#
+# One source of truth for every ryaniosys/*-agent repo. A caller repo only supplies a ~10-line
+# `.github/workflows/pr_agent.yml` that forwards its pull_request / issue_comment events here.
+#
+# Config that must be uniform (model, gateway, which tools run) lives in this file as env, which
+# overrides any repo .pr_agent.toml. The REVIEW RUBRIC lives in ryaniosys/pr-agent-settings/
+# .pr_agent.toml (org-global, applied with lower precedence), so a repo can override it by
+# committing its own .pr_agent.toml. The litellm virtual key is fetched at runtime from the
+# self-hosted Infisical (secrets.iosys.ch) via OIDC, so no long-lived secret lives in any repo.
+
+on:
+  workflow_call: {}
+
+jobs:
+  pr_agent:
+    # Gated on the org (or repo-override) variable PR_AGENT_ENABLED so onboarding a repo does not
+    # spam failing runs before provisioning lands. Second clause keeps comment-triggered runs
+    # (/review, /improve) to PRs only. vars here resolves to org + caller-repo variables.
+    if: >-
+      ${{ vars.PR_AGENT_ENABLED == 'true' &&
+      (github.event_name != 'issue_comment' || github.event.issue.pull_request) }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch litellm key from Infisical (OIDC)
+        uses: Infisical/secrets-action@v1.0.9
+        with:
+          method: oidc
+          # All three are non-secret and inherited from org Actions Variables, so no repo needs
+          # to set them. The OIDC identity is bound to repo:ryaniosys/*, so it works org-wide.
+          identity-id: ${{ vars.INFISICAL_IDENTITY_ID }}
+          domain: https://secrets.iosys.ch
+          project-slug: ${{ vars.INFISICAL_PROJECT_SLUG }}
+          env-slug: prod
+          secret-path: /                  # project root of the pr-agent project; holds LITELLM_KEY
+          export-type: env                # exports LITELLM_KEY into the job environment
+
+      - name: Run PR-Agent
+        uses: the-pr-agent/pr-agent@v0.41.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Model + gateway config live here (not only in .pr_agent.toml) because the Action reads
+          # the toml from the DEFAULT branch, so a pre-merge PR would otherwise run with defaults.
+          # Env wins over both the org-global and the repo-local toml, keeping the model uniform.
+          CONFIG.MODEL: "openai/openrouter/openai/gpt-5.6-terra-pro"
+          CONFIG.FALLBACK_MODELS: '["openai/openrouter/google/gemini-3.1-pro-preview"]'
+          CONFIG.CUSTOM_MODEL_MAX_TOKENS: "1000000"
+          OPENAI.API_BASE: "https://litellm.iosys.ch/v1"
+          # Which tools run, and on which PR events (incl. synchronize, so pushes re-review).
+          GITHUB_ACTION_CONFIG.AUTO_DESCRIBE: "true"
+          GITHUB_ACTION_CONFIG.AUTO_REVIEW: "true"
+          GITHUB_ACTION_CONFIG.AUTO_IMPROVE: "true"
+          GITHUB_ACTION_CONFIG.PR_ACTIONS: '["opened","reopened","ready_for_review","synchronize"]'
+          # Authenticate to the litellm gateway. It runs forward_client_headers_to_llm_api, which
+          # forwards Authorization UPSTREAM, so the established iosys pattern is x-litellm-api-key.
+          # We send both: OPENAI.KEY satisfies the client's api_key requirement, the header carries
+          # the gateway-side auth.
+          OPENAI.KEY: ${{ env.LITELLM_KEY }}
+          LITELLM.EXTRA_HEADERS: '{"x-litellm-api-key": "${{ env.LITELLM_KEY }}"}'
