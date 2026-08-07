@@ -62,6 +62,10 @@ jobs:
 
           decline() {   # leave the PR open, tag it for tier 2, and stop (exit 0 = not an error)
             say "NOT clean: $1 -> leaving PR #$PR open for review"
+            # Ensure the label exists first (--force creates or updates, never fails), otherwise
+            # --add-label silently no-ops in a repo that has never seen this label.
+            gh label create 'pr-agent:findings' --repo "$REPO" --color d93f0b --force \
+              --description 'PR-Agent gate found issues; auto-merge declined, needs discharge (tier 2)' >/dev/null 2>&1 || true
             gh pr edit "$PR" --repo "$REPO" --add-label 'pr-agent:findings' >/dev/null 2>&1 || true
             exit 0
           }
