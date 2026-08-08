@@ -40,7 +40,7 @@ jobs:
           REPO: ${{ github.event.workflow_run.repository.full_name }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
           # Trusted PR authors. Anything else never auto-merges (fail-closed).
-          TRUSTED_AUTHORS: "chmryan,chrisryan,chris.ryan,claude,cyrus,github-actions[bot],app/github-actions,app/cyrus"
+          TRUSTED_AUTHORS: "chmryan,chrisryan,chris.ryan,claude,cyrus,github-actions[bot],app/github-actions,app/cyrus,app/cyrus-devvm1"
         run: |
           set -euo pipefail
           say() { echo "automerge: $*" >&2; }
