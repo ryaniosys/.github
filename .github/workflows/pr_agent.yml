@@ -10,7 +10,7 @@ name: PR-Agent (cross-family review, reusable)
 # overrides any repo .pr_agent.toml. The REVIEW RUBRIC lives in ryaniosys/pr-agent-settings/
 # .pr_agent.toml (org-global, applied with lower precedence), so a repo can override it by
 # committing its own .pr_agent.toml. The litellm virtual key is fetched at runtime from the
-# self-hosted Infisical (secrets.iosys.ch) via OIDC, so no long-lived secret lives in any repo.
+# self-hosted Infisical via OIDC, so no long-lived secret lives in any repo.
 
 on:
   workflow_call: {}
@@ -32,7 +32,7 @@ jobs:
           # All three are non-secret and inherited from org Actions Variables, so no repo needs
           # to set them. The OIDC identity is bound to repo:ryaniosys/*, so it works org-wide.
           identity-id: ${{ vars.INFISICAL_IDENTITY_ID }}
-          domain: https://secrets.iosys.ch
+          domain: ${{ vars.INFISICAL_DOMAIN }}
           project-slug: ${{ vars.INFISICAL_PROJECT_SLUG }}
           env-slug: prod
           secret-path: /                  # project root of the pr-agent project; holds LITELLM_KEY
@@ -48,7 +48,7 @@ jobs:
           CONFIG.MODEL: "openai/openrouter/openai/gpt-5.6-luna-pro"
           CONFIG.FALLBACK_MODELS: '["openai/openrouter/openai/gpt-5.6-terra"]'
           CONFIG.CUSTOM_MODEL_MAX_TOKENS: "1000000"
-          OPENAI.API_BASE: "https://litellm.iosys.ch/v1"
+          OPENAI.API_BASE: "${{ vars.LITELLM_API_BASE }}"
           # These OpenRouter reasoning models reject some params PR-Agent sends (temperature etc.),
           # which raised UnsupportedParamsError on EVERY primary call and silently fell back to the
           # expensive gemini-3.1-pro-preview (100 fallback calls = USD 10+ before this was caught).
