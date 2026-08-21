@@ -41,8 +41,10 @@ jobs:
           # from now on. Older repos are unaffected only because their claim shape predates the
           # change, so this is a fleet-wide time bomb, not a per-repo provisioning omission: if
           # GitHub migrates existing repos to the immutable form, every caller breaks at once.
-          # Fix belongs in Infisical (boundSubject must tolerate both shapes, pinned to the org's
-          # immutable id 149496634 so a lookalike org cannot match), not in any caller. See
+          # Fix belongs in Infisical, not in any caller: set boundSubject to repo:ryaniosys[/@]*
+          # which matches both shapes while still rejecting a lookalike org like ryaniosys-evil.
+          # Infisical globs the subject with picomatch {bash:true} and does NOT comma-split it, so
+          # it must stay a single pattern; a comma-separated value would match nothing at all. See
           # IOSYS-1826. Until it lands, a new repo should set a repo-level PR_AGENT_ENABLED=false so
           # the gate skips instead of reddening every PR, then delete that variable once fixed;
           # leaving it false is the inert-guard trap, a caller that looks wired but reviews nothing.
