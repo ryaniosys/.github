@@ -30,7 +30,15 @@ jobs:
         with:
           method: oidc
           # All three are non-secret and inherited from org Actions Variables, so no repo needs
-          # to set them. The OIDC identity is bound to repo:ryaniosys/*, so it works org-wide.
+          # to set them. The OIDC identity is NOT bound to a repo:ryaniosys/* wildcard: its allowed
+          # subjects are an explicit per-repo set, so a new caller repo 403s here ("Access denied:
+          # OIDC subject not allowed") on every PR until it is granted. Onboarding a repo is two
+          # steps: (1) add that repo's subjects to the ci-pr-agent identity in the Infisical UI,
+          # covering BOTH shapes GitHub presents, repo:ryaniosys/<repo>:pull_request and
+          # repo:ryaniosys/<repo>:ref:refs/heads/<branch>; (2) until that grant lands, set a
+          # repo-level PR_AGENT_ENABLED=false so the gate skips instead of reddening every PR, then
+          # delete that repo variable so the org-level true applies again. Leaving the repo variable
+          # at false is the inert-guard trap: the caller looks wired while reviewing nothing.
           identity-id: ${{ vars.INFISICAL_IDENTITY_ID }}
           domain: ${{ vars.INFISICAL_DOMAIN }}
           project-slug: ${{ vars.INFISICAL_PROJECT_SLUG }}
