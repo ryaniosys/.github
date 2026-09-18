@@ -1,0 +1,11 @@
+# Every repo in the org calls the reusable workflows in this directory, and they run with
+# `id-token: write` (Infisical OIDC) plus pull-request and issue write. A change here executes
+# with those privileges in ~28 repositories, so it is the highest-leverage path in the org and
+# must not land by direct push.
+#
+# This is the control that lets the callers keep `@main`: the shared workflow stays instantly
+# fixable everywhere, and the change itself is what gets reviewed. Pinning 28 callers to a SHA
+# would invert that, freezing each repo on whatever was current the day it was created and
+# requiring 28 merges to ship a security fix.
+
+.github/workflows/   @ryaniosys/engineering
