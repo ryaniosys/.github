@@ -26,7 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Fetch litellm key from Infisical (OIDC)
-        uses: Infisical/secrets-action@v1.0.9
+        uses: Infisical/secrets-action@8a06c1bdcd5b8635d510c52d4b57a92c1ccef785 # v1.0.9
         with:
           method: oidc
           # All three are non-secret and inherited from org Actions Variables, so no repo needs
@@ -39,7 +39,7 @@ jobs:
           export-type: env                # exports LITELLM_KEY into the job environment
 
       - name: Run PR-Agent
-        uses: the-pr-agent/pr-agent@v0.41.1
+        uses: the-pr-agent/pr-agent@743f52d80f3513193dfc7626f778c73478df6d0a # v0.41.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Model + gateway config live here (not only in .pr_agent.toml) because the Action reads
