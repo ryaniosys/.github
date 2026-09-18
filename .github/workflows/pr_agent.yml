@@ -26,7 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Fetch litellm key from Infisical (OIDC)
-        uses: Infisical/secrets-action@v1.0.9
+        uses: Infisical/secrets-action@v1.0.18
         with:
           method: oidc
           # All three are non-secret and inherited from org Actions Variables, so no repo needs
