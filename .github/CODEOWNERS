@@ -1,11 +1,19 @@
 # Every repo in the org calls the reusable workflows in this directory, and they run with
 # `id-token: write` (Infisical OIDC) plus pull-request and issue write. A change here executes
-# with those privileges in ~28 repositories, so it is the highest-leverage path in the org and
-# must not land by direct push.
+# with those privileges in ~28 repositories, so it is the highest-leverage path in the org.
 #
-# This is the control that lets the callers keep `@main`: the shared workflow stays instantly
-# fixable everywhere, and the change itself is what gets reviewed. Pinning 28 callers to a SHA
-# would invert that, freezing each repo on whatever was current the day it was created and
-# requiring 28 merges to ship a security fix.
+# State before this file (checked 2026-09-18): the "protect main" ruleset already required a
+# pull request and allowed no bypass actors, so direct pushes were never possible. What it did
+# NOT require was anyone reading the change: `required_approving_review_count` is 0 and
+# `require_code_owner_review` was false, so a PR touching these workflows could be self-merged
+# unreviewed.
+#
+# This file is only advisory until the ruleset sets `require_code_owner_review: true`. With that
+# flipped, a change to these workflows needs an approval from @ryaniosys/engineering.
+#
+# This is also the control that lets the callers keep `@main`: the shared workflow stays
+# instantly fixable across the fleet, and the change itself is what gets reviewed. Pinning 28
+# callers to a SHA would invert that, freezing each repo on whatever was current the day it was
+# created and turning a security fix into 28 merges.
 
 .github/workflows/   @ryaniosys/engineering
