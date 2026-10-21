@@ -38,6 +38,40 @@ jobs:
           secret-path: /                  # project root of the pr-agent project; holds LITELLM_KEY
           export-type: env                # exports LITELLM_KEY into the job environment
 
+      - name: Connect reviewer to private gateway
+        timeout-minutes: 4
+        env:
+          NETBIRD_CI_SETUP_KEY: ${{ env.NETBIRD_CI_SETUP_KEY }}
+          LITELLM_API_BASE: ${{ vars.LITELLM_API_BASE }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${NETBIRD_CI_SETUP_KEY:-}" ]; then
+            echo "::error::NETBIRD_CI_SETUP_KEY is required for the private review gateway"
+            exit 1
+          fi
+          package="${RUNNER_TEMP}/netbird.deb"
+          curl --fail --silent --show-error --location \
+            https://github.com/netbirdio/netbird/releases/download/v0.78.1/netbird_0.78.1_linux_amd64.deb \
+            --output "$package"
+          printf '%s  %s\n' \
+            c461cfa27426e346c2479ec6dc83803a812dfcec135eb0f67a4dce0da75ad5db "$package" \
+            | sha256sum --check --status
+          sudo apt-get install --yes "$package"
+          sudo systemctl start netbird
+          umask 077
+          key_file="$(mktemp "${RUNNER_TEMP}/netbird-setup-key.XXXXXX")"
+          trap 'rm -f "$key_file"' EXIT
+          printf '%s' "$NETBIRD_CI_SETUP_KEY" > "$key_file"
+          sudo timeout 90s netbird up --setup-key-file "$key_file" \
+            --hostname "ci-pr-agent-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          sudo netbird status --check startup
+          gateway="${LITELLM_API_BASE%/}"
+          gateway="${gateway%/v1}"
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 30 \
+            --output /dev/null --write-out 'Private gateway HTTP %{http_code}\n' \
+            "${gateway}/health/liveliness"
+
       - name: Run PR-Agent
         uses: the-pr-agent/pr-agent@v0.47.0
         env:
@@ -66,3 +100,13 @@ jobs:
           # the gateway-side auth.
           OPENAI.KEY: ${{ env.LITELLM_KEY }}
           LITELLM.EXTRA_HEADERS: '{"x-litellm-api-key": "${{ env.LITELLM_KEY }}"}'
+
+      - name: Disconnect reviewer from NetBird
+        if: always()
+        shell: bash
+        run: |
+          if command -v netbird >/dev/null 2>&1; then
+            if ! sudo netbird down; then
+              echo "::warning::NetBird cleanup failed on the ephemeral runner"
+            fi
+          fi

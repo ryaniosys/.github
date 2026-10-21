@@ -19,10 +19,19 @@ Use these labels on issues:
 
 ## Definition of Ready
 An issue is ready to work on when it has:
+
 - Type label
 - Size label
 - Priority label
 - Clear requirements
+
+## Private PR review gateway
+
+The reusable PR-Agent workflow joins NetBird before contacting the private LLM
+gateway and disconnects afterward. Infisical supplies `NETBIRD_CI_SETUP_KEY`;
+provision it as a reusable ephemeral-peer key with only the gateway access its
+runner group needs. Missing enrollment or gateway connectivity fails before
+model inference. The workflow does not publish DNS or widen overlay policies.
 
 ## Branching
 - **Trunk-based development**: Work on `main`
