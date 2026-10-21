@@ -68,9 +68,14 @@ jobs:
           sudo netbird status --check startup
           gateway="${LITELLM_API_BASE%/}"
           gateway="${gateway%/v1}"
-          curl --fail --silent --show-error --connect-timeout 10 --max-time 30 \
+          if ! curl --fail --silent --show-error --connect-timeout 5 --max-time 10 \
+            --retry 5 --retry-delay 2 --retry-all-errors \
             --output /dev/null --write-out 'Private gateway HTTP %{http_code}\n' \
-            "${gateway}/health/liveliness"
+            "${gateway}/health/liveliness"; then
+            sudo netbird status --detail
+            resolvectl status
+            exit 1
+          fi
 
       - name: Run PR-Agent
         uses: the-pr-agent/pr-agent@v0.47.0
