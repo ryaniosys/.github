@@ -85,18 +85,7 @@ jobs:
       # pulls the mutable `github_action` tag, which by now is a newer release; this pins the
       # versioned tag by digest instead, so an upgrade is a reviewed change here.
       - name: Run PR-Agent
-        run: |
-          set -euo pipefail
-          docker run --rm --network host \
-            -v "$RUNNER_TEMP:$RUNNER_TEMP" \
-            -e GITHUB_EVENT_NAME -e GITHUB_EVENT_PATH -e GITHUB_OUTPUT -e GITHUB_STEP_SUMMARY \
-            -e GITHUB_REPOSITORY -e GITHUB_API_URL -e GITHUB_SERVER_URL -e GITHUB_SHA -e GITHUB_REF \
-            -e GITHUB_ACTIONS -e GITHUB_TOKEN \
-            -e CONFIG.MODEL -e CONFIG.FALLBACK_MODELS -e CONFIG.CUSTOM_MODEL_MAX_TOKENS \
-            -e OPENAI.API_BASE -e OPENAI.KEY -e LITELLM.DROP_PARAMS -e LITELLM.EXTRA_HEADERS \
-            -e GITHUB_ACTION_CONFIG.AUTO_DESCRIBE -e GITHUB_ACTION_CONFIG.AUTO_REVIEW \
-            -e GITHUB_ACTION_CONFIG.AUTO_IMPROVE -e GITHUB_ACTION_CONFIG.PR_ACTIONS \
-            pragent/pr-agent:0.41.1-github_action@sha256:ec267eb168375c150d75efc024e2b10e0e2768ad0c000f15fd2378fe63abfe98
+        uses: the-pr-agent/pr-agent@v0.47.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Model + gateway config live here (not only in .pr_agent.toml) because the Action reads
