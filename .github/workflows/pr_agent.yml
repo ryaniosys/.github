@@ -1,7 +1,7 @@
 name: PR-Agent (cross-family review, reusable)
 
-# Reusable org-wide AI code review. Callers pass their PR events in; this workflow runs a model
-# from a DIFFERENT lab than the PR author (Claude), so it is a genuine independent check.
+# Reusable org-wide AI code review. The configured Google primary and Z.ai fallback
+# differ from the usual Anthropic/OpenAI author routes; requests alone do not attest identity.
 #
 # One source of truth for every ryaniosys/*-agent repo. A caller repo only supplies a ~10-line
 # `.github/workflows/pr_agent.yml` that forwards its pull_request / issue_comment events here.
@@ -11,6 +11,12 @@ name: PR-Agent (cross-family review, reusable)
 # .pr_agent.toml (org-global, applied with lower precedence), so a repo can override it by
 # committing its own .pr_agent.toml. The litellm virtual key is fetched at runtime from the
 # self-hosted Infisical via OIDC, so no long-lived secret lives in any repo.
+#
+# BRIDGE COPY. The source of truth is ryaniosys/.github-private, and callers are moving there:
+# internal reusable workflows cannot be called from public repos, so a public repo can no longer
+# trigger a run that holds the OIDC token and joins the NetBird overlay. This copy keeps reviews
+# running until every caller points at .github-private. Keep it identical to that file (apart
+# from this paragraph), and replace it with a stub once the last caller has moved.
 
 on:
   workflow_call: {}
@@ -19,41 +25,107 @@ jobs:
   pr_agent:
     # Gated on the org (or repo-override) variable PR_AGENT_ENABLED so onboarding a repo does not
     # spam failing runs before provisioning lands. Second clause keeps comment-triggered runs
-    # (/review, /improve) to PRs only. vars here resolves to org + caller-repo variables.
+    # (/review, /improve) to PRs only, and to commenters who belong to the repo: a comment
+    # run mints the OIDC token and joins the overlay, which no drive-by commenter should
+    # trigger. vars here resolves to org + caller-repo variables.
     if: >-
       ${{ vars.PR_AGENT_ENABLED == 'true' &&
-      (github.event_name != 'issue_comment' || github.event.issue.pull_request) }}
-    runs-on: ubuntu-latest
+      (github.event_name != 'issue_comment' ||
+      (github.event.issue.pull_request &&
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))) }}
+    # Pinned rather than ubuntu-latest: this job installs a kernel WireGuard client, and a
+    # silent image bump is a change nobody reviewed. Not ubuntu-slim: that runner is a
+    # container without /dev/net/tun or Docker, and this job needs both.
+    runs-on: ubuntu-24.04
     steps:
       - name: Fetch litellm key from Infisical (OIDC)
-        uses: Infisical/secrets-action@v1.0.9
+        uses: Infisical/secrets-action@d2e351f16c6ca20d17c85e6c992e04bdeb64e87d # v1.0.18
         with:
           method: oidc
           # All three are non-secret and inherited from org Actions Variables, so no repo needs
-          # to set them. The OIDC identity is bound to repo:ryaniosys/*, so it works org-wide.
+          # to set them. The identity binds only the CALLER's subject claim (boundClaims is empty),
+          # so moving this workflow to .github-private did not change who may log in. GitHub issues
+          # two claim shapes: repo:ryaniosys/<repo>:... for repos created up to 2026-07-11, and
+          # repo:ryaniosys@149496634/<repo>@<id>:... from 2026-07-27 on. boundSubject must match
+          # both, which a literal repo:ryaniosys/* does not. Keep it a single picomatch pattern,
+          # repo:ryaniosys[/@]*: Infisical does not comma-split boundSubject, and repo:ryaniosys*
+          # would also admit a lookalike org such as ryaniosys-evil. See IOSYS-1826.
           identity-id: ${{ vars.INFISICAL_IDENTITY_ID }}
           domain: ${{ vars.INFISICAL_DOMAIN }}
           project-slug: ${{ vars.INFISICAL_PROJECT_SLUG }}
           env-slug: prod
           secret-path: /                  # project root of the pr-agent project; holds LITELLM_KEY
-          export-type: env                # exports LITELLM_KEY into the job environment
+          export-type: env                # and NETBIRD_CI_SETUP_KEY, exported into the job env
 
+      # litellm.iosys.ch resolves and answers only inside the NetBird overlay. The runner joins
+      # as an ephemeral peer in the `ci` group (iosys-netbird, policy 15: 443 on the LiteLLM VM)
+      # and drops out on its own once the VM is gone. The key comes from Infisical above,
+      # so no NetBird secret lives in GitHub.
+      - name: Join the NetBird overlay
+        env:
+          NETBIRD_VERSION: "0.78.1"
+          NETBIRD_DEB_SHA256: "c461cfa27426e346c2479ec6dc83803a812dfcec135eb0f67a4dce0da75ad5db"
+          LITELLM_API_BASE: ${{ vars.LITELLM_API_BASE }}
+        run: |
+          set -euo pipefail
+          : "${NETBIRD_CI_SETUP_KEY:?NETBIRD_CI_SETUP_KEY missing from Infisical (pr-agent project, prod, /)}"
+          : "${LITELLM_API_BASE:?org variable LITELLM_API_BASE is not set}"
+          deb="netbird_${NETBIRD_VERSION}_linux_amd64.deb"
+          curl -fsSL -o "/tmp/$deb" \
+            "https://github.com/netbirdio/netbird/releases/download/v${NETBIRD_VERSION}/$deb"
+          echo "${NETBIRD_DEB_SHA256}  /tmp/$deb" | sha256sum -c -
+          # The .deb's postinst installs and starts the daemon itself.
+          sudo apt-get install -y -qq "/tmp/$deb" >/dev/null
+          # Key via NB_SETUP_KEY rather than --setup-key, so it stays out of the process list.
+          # `up` blocks until management and signal are connected, not until peers and DNS are.
+          sudo NB_SETUP_KEY="$NETBIRD_CI_SETUP_KEY" \
+            netbird up --hostname "gh-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+
+          # The peer tunnel and the overlay DNS entries come up after `up` returns.
+          health="${LITELLM_API_BASE%/}"; health="${health%/v1}/health/liveliness"
+          for _ in $(seq 1 45); do
+            if curl -fsS --max-time 5 -o /dev/null "$health"; then
+              echo "LiteLLM reachable over NetBird"; exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::LiteLLM not reachable over NetBird after 90s ($health)"
+          sudo netbird status -d || true
+          exit 1
+
+      # Run the Action's image directly instead of `uses: the-pr-agent/pr-agent`: a Docker
+      # container action gets the job's bridge network, whose DNS bypasses systemd-resolved and
+      # with it NetBird's overlay zone, so litellm.iosys.ch would stay NXDOMAIN inside it. With
+      # --network host the container uses the runner's resolver and routes, NetBird included.
+      # Same release as the Action this replaces (the-pr-agent/pr-agent@v0.41.1). Its Dockerfile
+      # pulls the mutable `github_action` tag, which by now is a newer release; this pins the
+      # versioned tag by digest instead, so an upgrade is a reviewed change here.
       - name: Run PR-Agent
-        uses: the-pr-agent/pr-agent@v0.47.0
+        run: |
+          set -euo pipefail
+          docker run --rm --network host \
+            -v "$RUNNER_TEMP:$RUNNER_TEMP" \
+            -e GITHUB_EVENT_NAME -e GITHUB_EVENT_PATH -e GITHUB_OUTPUT -e GITHUB_STEP_SUMMARY \
+            -e GITHUB_REPOSITORY -e GITHUB_API_URL -e GITHUB_SERVER_URL -e GITHUB_SHA -e GITHUB_REF \
+            -e GITHUB_ACTIONS -e GITHUB_TOKEN \
+            -e CONFIG.MODEL -e CONFIG.FALLBACK_MODELS -e CONFIG.CUSTOM_MODEL_MAX_TOKENS \
+            -e OPENAI.API_BASE -e OPENAI.KEY -e LITELLM.DROP_PARAMS -e LITELLM.EXTRA_HEADERS \
+            -e GITHUB_ACTION_CONFIG.AUTO_DESCRIBE -e GITHUB_ACTION_CONFIG.AUTO_REVIEW \
+            -e GITHUB_ACTION_CONFIG.AUTO_IMPROVE -e GITHUB_ACTION_CONFIG.PR_ACTIONS \
+            pragent/pr-agent:0.41.1-github_action@sha256:ec267eb168375c150d75efc024e2b10e0e2768ad0c000f15fd2378fe63abfe98
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Model + gateway config live here (not only in .pr_agent.toml) because the Action reads
           # the toml from the DEFAULT branch, so a pre-merge PR would otherwise run with defaults.
           # Env wins over both the org-global and the repo-local toml, keeping the model uniform.
-          CONFIG.MODEL: "openai/openrouter/openai/gpt-5.6-luna-pro"
-          CONFIG.FALLBACK_MODELS: '["openai/openrouter/openai/gpt-5.6-terra"]'
+          CONFIG.MODEL: "openai/openrouter/google/gemini-3.1-pro-preview"
+          CONFIG.FALLBACK_MODELS: '["openai/openrouter/z-ai/glm-5.3-flash"]'
           CONFIG.CUSTOM_MODEL_MAX_TOKENS: "1000000"
           OPENAI.API_BASE: "${{ vars.LITELLM_API_BASE }}"
-          # These OpenRouter reasoning models reject some params PR-Agent sends (temperature etc.),
-          # which raised UnsupportedParamsError on EVERY primary call and silently fell back to the
-          # expensive gemini-3.1-pro-preview (100 fallback calls = USD 10+ before this was caught).
-          # drop_params tells litellm to strip the unsupported param instead of erroring, so the
-          # cheap primary actually serves the review. Fallback is now a cheap same-family model too.
+          # The former OpenRouter/OpenAI pair has no endpoints admitted by the workspace policy.
+          # Keep that policy intact. Gemini Pro was the documented premium fallback; it is now
+          # primary, with the admitted GLM Flash route as fallback. Primary cost is higher.
+          # Retain drop_params so unsupported generation parameters do not cause a silent switch.
           LITELLM.DROP_PARAMS: "true"
           # Which tools run, and on which PR events (incl. synchronize, so pushes re-review).
           GITHUB_ACTION_CONFIG.AUTO_DESCRIBE: "true"
