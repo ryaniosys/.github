@@ -93,7 +93,7 @@ github_labels:
 
 # Linear issue taxonomy: existing labels only (read-only check 2026-10-22).
 # Agents never create, rename, retire or bulk-apply labels.
-# allowed_labels is an allowlist of names, not a per-team guarantee: availability differs by team; verify before applying.
+# allowed_labels is the shared generic allowlist of label names, not a per-team guarantee. Additional existing team or project labels may be used only where the private handbook's label policy names them for the context and the target team has them. This file does not enumerate those labels and does not create them.
 linear_taxonomy:
   schema_version: 2
   baseline_ref: "ryaniosys/.github main 4c8f1361bc4df14c6029e8eb8cd2fd5f5ffdb43e (pre-taxonomy; provenance of this block comes from the external manifest, not this file)"

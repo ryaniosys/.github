@@ -15,7 +15,7 @@ Work is tracked in Linear. Labels and fields come from the existing Linear taxon
 - **Category** (one per implementation ticket): `Bug`, `Feature`, `Improvement`, `Research`
 - **Priority**: native Linear priority 0-4 (0 = No priority, Backlog only; Ready needs 1-4), not a label
 - **Estimate**: native Linear points, not a label
-- **Other existing labels**: `Blocked`; `Task`, `follow-up`, `agent-authored` only where the target team has them. Availability differs by team: verify before applying.
+- **Other existing labels**: `Blocked`, and `Task`, `follow-up`, `agent-authored` where the target team has them. Labels beyond the shared generic set in `CONVENTIONS.yaml` (`allowed_labels`) are used only where the private handbook's label policy names them for the context and the target team has them.
 
 Do not create, rename, or retire labels. Team availability varies: verify a label exists on the team before applying it.
 
