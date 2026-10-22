@@ -11,18 +11,16 @@ Follow these conventions when working in iosys repositories.
 - Internal projects: `{product-name}` (e.g., `invoicing-saas`)
 
 ## Labels
-Use these labels on issues:
-- **Priority**: `priority: critical`, `priority: high`, `priority: medium`, `priority: low`
-- **Type**: `type: bug`, `type: feature`, `type: process`, `type: other`
-- **Size**: `size: xs` (<1h), `size: s` (<1d), `size: m` (1-3d), `size: l` (>3d)
-- **Workflow**: `ready`, `blocked`, `help-wanted`
+Work is tracked in Linear. Labels and fields come from the existing Linear taxonomy in `linear_taxonomy` (see `CONVENTIONS.yaml`).
+- **Category** (one per implementation ticket): `Bug`, `Feature`, `Improvement`, `Research`
+- **Priority**: native Linear priority 0-4 (0 = No priority, Backlog only; Ready needs 1-4), not a label
+- **Estimate**: native Linear points, not a label
+- **Other existing labels**: `Blocked`; `Task`, `follow-up`, `agent-authored` only where the target team has them. Availability differs by team: verify before applying.
+
+Do not create, rename, or retire labels. Team availability varies: verify a label exists on the team before applying it.
 
 ## Definition of Ready
-An issue is ready to work on when it has:
-- Type label
-- Size label
-- Priority label
-- Clear requirements
+An implementation ticket is ready when it has exactly one Category label, a native priority set to 1-4, a native estimate when the team scale is verified, and clear requirements. Meeting follow-up tasks (no Category label) are exempt and are not Ready until triaged.
 
 ## Branching
 - **Trunk-based development**: Work on `main`
@@ -31,13 +29,7 @@ An issue is ready to work on when it has:
 - **Versioning**: Semantic versioning (semver)
 
 ## Creating Issues
-```bash
-# Bug
-gh issue create --title "[Bug]: description" --label "type: bug"
-
-# Feature
-gh issue create --title "[Feature]: description" --label "type: feature"
-```
+Create work items in Linear, not GitHub. The `gh issue create` examples with `type:` labels in `issue_templates` in `CONVENTIONS.yaml` are GitHub-only, use GitHub-side labels (`github_labels`), and are not Linear labels.
 
 ## Tech Stack
 - **Cloud**: Azure (IoT Hub, Databricks, Functions)
