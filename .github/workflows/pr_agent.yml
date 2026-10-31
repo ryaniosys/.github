@@ -24,12 +24,6 @@ on:
 
 jobs:
   pr_agent:
-    # Serialize automatic reviews and authorized /review comments per PR. Only a newer
-    # pull_request event may cancel the active run; comment-triggered work waits and cannot
-    # replace the required automatic review with an ungated issue_comment run.
-    concurrency:
-      group: pr-agent-${{ github.repository }}-${{ github.event.pull_request.number || github.event.issue.number || github.run_id }}
-      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     # Gated on the org (or repo-override) variable PR_AGENT_ENABLED so onboarding a repo does not
     # spam failing runs before provisioning lands. Second clause keeps comment-triggered runs
     # (/review, /improve) to PRs only, and to commenters who belong to the repo: a comment
