@@ -1,7 +1,8 @@
 name: PR-Agent (cross-family review, reusable)
 
-# Reusable org-wide AI code review. The configured Google primary and Z.ai fallback
-# differ from the usual Anthropic/OpenAI author routes; requests alone do not attest identity.
+# Reusable org-wide AI code review. The reviewer is a different model family from the Claude-authored
+# PRs it reviews: an OpenAI GPT-5-family model served by the iosys LiteLLM gateway (Azure-backed aliases).
+# A review that is not published FAILS the job (see "Require a published review"), so the check cannot pass silently.
 #
 # One source of truth for every ryaniosys/*-agent repo. A caller repo only supplies a ~10-line
 # `.github/workflows/pr_agent.yml` that forwards its pull_request / issue_comment events here.
@@ -23,6 +24,11 @@ on:
 
 jobs:
   pr_agent:
+    # One run per PR at a time. Without this, an older run can update the persistent review
+    # comment after a newer run starts, and the newer run passes on a review it did not produce.
+    concurrency:
+      group: pr-agent-${{ github.repository }}-${{ github.event.pull_request.number || github.run_id }}
+      cancel-in-progress: true
     # Gated on the org (or repo-override) variable PR_AGENT_ENABLED so onboarding a repo does not
     # spam failing runs before provisioning lands. Second clause keeps comment-triggered runs
     # (/review, /improve) to PRs only, and to commenters who belong to the repo: a comment
@@ -103,6 +109,7 @@ jobs:
       - name: Run PR-Agent
         run: |
           set -euo pipefail
+          echo "REVIEW_STARTED=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
           docker run --rm --network host \
             -v "$RUNNER_TEMP:$RUNNER_TEMP" \
             -e GITHUB_EVENT_NAME -e GITHUB_EVENT_PATH -e GITHUB_OUTPUT -e GITHUB_STEP_SUMMARY \
@@ -112,19 +119,20 @@ jobs:
             -e OPENAI.API_BASE -e OPENAI.KEY -e LITELLM.DROP_PARAMS -e LITELLM.EXTRA_HEADERS \
             -e GITHUB_ACTION_CONFIG.AUTO_DESCRIBE -e GITHUB_ACTION_CONFIG.AUTO_REVIEW \
             -e GITHUB_ACTION_CONFIG.AUTO_IMPROVE -e GITHUB_ACTION_CONFIG.PR_ACTIONS \
-            pragent/pr-agent:0.41.1-github_action@sha256:ec267eb168375c150d75efc024e2b10e0e2768ad0c000f15fd2378fe63abfe98
+            pragent/pr-agent:0.41.1-github_action@sha256:ec267eb168375c150d75efc024e2b10e0e2768ad0c000f15fd2378fe63abfe98 \
+            2>&1 | tee "$RUNNER_TEMP/pr_agent.log"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Model + gateway config live here (not only in .pr_agent.toml) because the Action reads
-          # the toml from the DEFAULT branch, so a pre-merge PR would otherwise run with defaults.
+          # Model route: the Azure-backed gateway aliases that the gateway's own routing check keeps live.
+          # chat-flagship is primary and chat-economy is the same-provider fallback; both carry presidio-pii.
+          # The OpenRouter routes are out of the review path (MGMT-1153): their key is capped monthly,
+          # and the Gemini preview route was excluded by the workspace data policy, so every review
+          # depended on the fallback.
           # Env wins over both the org-global and the repo-local toml, keeping the model uniform.
-          CONFIG.MODEL: "openai/openrouter/google/gemini-3.1-pro-preview"
-          CONFIG.FALLBACK_MODELS: '["openai/openrouter/z-ai/glm-5.3-flash"]'
-          CONFIG.CUSTOM_MODEL_MAX_TOKENS: "1000000"
+          CONFIG.MODEL: "openai/chat-flagship"
+          CONFIG.FALLBACK_MODELS: '["openai/chat-economy"]'
+          CONFIG.CUSTOM_MODEL_MAX_TOKENS: "128000"
           OPENAI.API_BASE: "${{ vars.LITELLM_API_BASE }}"
-          # The former OpenRouter/OpenAI pair has no endpoints admitted by the workspace policy.
-          # Keep that policy intact. Gemini Pro was the documented premium fallback; it is now
-          # primary, with the admitted GLM Flash route as fallback. Primary cost is higher.
           # Retain drop_params so unsupported generation parameters do not cause a silent switch.
           LITELLM.DROP_PARAMS: "true"
           # Which tools run, and on which PR events (incl. synchronize, so pushes re-review).
@@ -138,3 +146,33 @@ jobs:
           # the gateway-side auth.
           OPENAI.KEY: ${{ env.LITELLM_KEY }}
           LITELLM.EXTRA_HEADERS: '{"x-litellm-api-key": "${{ env.LITELLM_KEY }}"}'
+
+      # Fail closed. PR-Agent exits 0 even when every LLM call fails: it logs "Failed to review PR" and
+      # returns. Runs went green that way with no review (MGMT-1153). On a pull_request run this step
+      # passes only if this run wrote or updated the review comment, which carries the marker
+      # "## PR Reviewer Guide". A run that published nothing leaves that comment with an older timestamp.
+      # Drafts are not gated: review is requested on ready_for_review, and that event runs this gate again.
+      - name: Require a published review (fail closed)
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          IS_DRAFT: ${{ github.event.pull_request.draft }}
+        run: |
+          set -euo pipefail
+          if [ "$IS_DRAFT" = "true" ]; then
+            echo "Draft PR: review is requested on ready_for_review; this run does not gate."
+            exit 0
+          fi
+          if grep -qF '{"text": "Failed to review PR' "$RUNNER_TEMP/pr_agent.log"; then
+            echo "::error::PR-Agent reported 'Failed to review PR'. No review was published."
+            exit 1
+          fi
+          published=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
+            --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("## PR Reviewer Guide"))) | (.updated_at // .created_at)' \
+            | sort | tail -n1)
+          if [ -z "$published" ] || [[ "$published" < "$REVIEW_STARTED" ]]; then
+            echo "::error::No PR Reviewer Guide was written by this run (latest: ${published:-none}; run started $REVIEW_STARTED)."
+            exit 1
+          fi
+          echo "Review published at $published."
